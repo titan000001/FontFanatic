@@ -8,54 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- html2canvas -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <!-- Whammy (Lightweight WebM Encoder) -->
-    <!-- We will inject a minimal version of Whammy or a simple MediaRecorder helper manually to avoid external dependency failure on some networks if possible,
-         but using a reliable CDN for whammy or webm-muxer is better.
-         Let's use the native MediaRecorder API since it is supported in all modern browsers (Chrome/Firefox/Safari).
-         No extra library needed if we capture canvas stream!
-    -->
-    <style>
-        /* Custom Styles for Textures and Scrollbars */
-        body {
-            background-color: #111827; /* Gray 900 */
-            color: #e5e7eb; /* Gray 200 */
-        }
-
-        .ransom-font-preload {
-            position: absolute;
-            opacity: 0;
-            pointer-events: none;
-            z-index: -999;
-        }
-
-        /* Corkboard Texture */
-        .texture-cork {
-            background-color: #d4a373;
-            background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23faedcd' fill-opacity='0.4' fill-rule='evenodd'%3E%3Cpath d='M0 38.59l2.83-2.83 1.41 1.41L1.41 40H0v-1.41zM0 1.4l2.83 2.83 1.41-1.41L1.41 0H0v1.41zM38.59 40l-2.83-2.83 1.41-1.41L40 38.59V40h-1.41zM40 1.41l-2.83 2.83-1.41-1.41L38.59 0H40v1.41zM20 18.6l2.83-2.83 1.41 1.41L21.41 20l2.83 2.83-1.41 1.41L20 21.41l-2.83 2.83-1.41-1.41L18.59 20l-2.83-2.83 1.41-1.41L20 18.59z'/%3E%3C/g%3E%3C/svg%3E");
-        }
-
-        /* Cardboard Texture */
-        .texture-cardboard {
-            background-color: #c0a080;
-            background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.05) 0px, rgba(0,0,0,0.05) 2px, transparent 2px, transparent 4px);
-        }
-
-        /* Cyberpunk Scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #1f2937;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #ef4444;
-            border-radius: 2px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #dc2626;
-        }
-    </style>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="h-screen flex flex-col overflow-hidden font-mono">
     <!-- App Content -->
@@ -70,6 +24,27 @@
             </div>
 
             <div class="flex flex-wrap gap-3 items-center">
+                <!-- Background Controls -->
+                <div class="flex items-center gap-2 bg-gray-800 p-1 rounded-sm border border-gray-700">
+                    <select id="bg-texture-select" class="bg-transparent text-xs text-gray-300 outline-none cursor-pointer">
+                        <option value="cork">Corkboard</option>
+                        <option value="cardboard">Cardboard</option>
+                        <option value="concrete">Concrete</option>
+                        <option value="paper">Paper</option>
+                        <option value="color">Solid Color</option>
+                        <option value="custom">Custom Image...</option>
+                    </select>
+                    <input type="color" id="bg-color-input" value="#111827" class="w-6 h-6 p-0 border-0 bg-transparent cursor-pointer">
+                    <input type="file" id="bg-image-input" accept="image/*" class="hidden">
+                    <button id="btn-bg-upload" title="Upload Image" class="text-gray-400 hover:text-white">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="h-6 w-px bg-gray-700 mx-2"></div>
+
                 <!-- Filename Input -->
                 <input type="text" id="filename-input" placeholder="filename"
                     class="bg-gray-800 border border-gray-700 text-gray-300 text-sm rounded-sm px-3 py-2 outline-none focus:border-red-500 font-mono w-32 placeholder-gray-600 transition-colors">
@@ -107,7 +82,7 @@
             </div>
         </header>
 
-        <!-- Video Settings Modal (Hidden by default) -->
+        <!-- Video Settings Modal -->
         <div id="video-modal" class="fixed inset-0 bg-black/80 hidden z-50 flex items-center justify-center backdrop-blur-sm">
             <div class="bg-gray-900 border border-purple-500 p-6 rounded-sm shadow-[0_0_20px_rgba(168,85,247,0.5)] max-w-md w-full relative">
                 <button id="btn-close-modal" class="absolute top-2 right-2 text-gray-500 hover:text-white">&times;</button>
@@ -134,7 +109,7 @@
                         Render Video
                     </button>
 
-                    <!-- Progress Bar (Hidden initially) -->
+                    <!-- Progress Bar -->
                     <div id="progress-container" class="hidden mt-4">
                         <div class="flex justify-between text-xs text-gray-400 mb-1">
                             <span>Processing...</span>
@@ -168,7 +143,7 @@
                 <!-- Scrollable Wrapper -->
                 <div class="flex-1 overflow-auto p-8 flex items-center justify-center bg-gray-900">
                     <!-- The Ransom Note Container (The element to export) -->
-                    <div id="ransom-output" class="texture-cork shadow-[0_10px_30px_rgba(0,0,0,0.5)] min-w-[300px] min-h-[300px] p-8 max-w-full transform transition-transform duration-200 origin-center">
+                    <div id="ransom-output" class="texture-cork shadow-[0_10px_30px_rgba(0,0,0,0.5)] min-w-[300px] min-h-[300px] p-8 max-w-full transform transition-transform duration-200 origin-center bg-cover bg-center">
                         <div id="ransom-content" class="flex flex-wrap gap-x-1 gap-y-2 content-start break-words whitespace-pre-wrap leading-relaxed">
                             <!-- Spans will go here -->
                             <span class="font-mono text-gray-800 opacity-50 text-sm">Waiting for input...</span>
@@ -179,492 +154,9 @@
         </main>
     </div>
 
-    <script>
-        // --- 1. The "Expensive" Font Pool ---
-        const fontPool = [
-            "Creepster", "Lobster", "Rye", "Monoton", "Press Start 2P", "Special Elite", "Abril Fatface",
-            "Bangers", "Fredoka One", "Righteous", "Bungee", "Indie Flower", "Shadows Into Light",
-            "Pacifico", "Amatic SC", "Permanent Marker", "Gloria Hallelujah", "Courgette", "Satisfy",
-            "Great Vibes", "Sacramento", "Orbitron", "Black Ops One", "Russo One", "Luckiest Guy",
-            "VT323", "Ultra", "Pinyon Script", "Cinzel", "Parisienne", "Audiowide", "Kaushan Script",
-            "Rock Salt", "Chewy", "Sigmar One", "Carter One", "Freckle Face", "Love Ya Like A Sister",
-            "Finger Paint", "Nosifer", "Eater", "Butcherman", "Frijole", "Metal Mania", "Flavors",
-            "Spicy Rice", "Ranchers", "Caesar Dressing", "Shojumaru", "Trade Winds", "Ewert",
-            "Sancreek", "UnifrakturMaguntia", "Pirata One", "New Rocker", "Jolly Lodger", "Piedra",
-            "Geostar", "Limelight", "Fontdiner Swanky", "Irish Grover", "Knewave", "Ribeye Marrow",
-            "Chicle", "Fascinate Inline", "Vast Shadow", "Graduate", "Stint Ultra Expanded", "Codystar",
-            "Faster One", "Henny Penny", "Snowburst One", "Emblema One", "Plaster", "Sirin Stencil",
-            "Stardos Stencil", "Allerta Stencil", "Wallpoet", "Bungee Shade", "Bungee Inline", "Megrim",
-            "Pompiere", "Coming Soon", "Just Another Hand", "Covered By Your Grace", "Walter Turncoat",
-            "Gochi Hand", "Patrick Hand", "Schoolbell", "Sunshiney", "Sniglet", "Slackey", "Kranky",
-            "Crushed", "Smokum", "Unkempt", "Crafty Girls", "Aclonica", "Rakkas", "Yatra One"
-        ];
-
-        // --- Font Loading Logic ---
-        function loadFonts() {
-            const BATCH_SIZE = 15;
-            const head = document.getElementsByTagName('head')[0];
-            let loadedCount = 0;
-
-            for (let i = 0; i < fontPool.length; i += BATCH_SIZE) {
-                const batch = fontPool.slice(i, i + BATCH_SIZE);
-                const link = document.createElement('link');
-                link.rel = 'stylesheet';
-                // Encode font names for URL (spaces to +)
-                const families = batch.map(font => font.replace(/ /g, '+')).join('|');
-                link.href = `https://fonts.googleapis.com/css?family=${families}&display=swap`;
-                head.appendChild(link);
-                loadedCount += batch.length;
-            }
-            console.log(`Requested ${loadedCount} fonts from Google.`);
-            document.getElementById('status-indicator').innerText = "Ransom Engine Ready";
-        }
-
-        // Initialize
-        loadFonts();
-
-        // --- 2. The Character Rendering Engine ---
-        const userInput = document.getElementById('user-input');
-        const ransomContent = document.getElementById('ransom-content');
-        const charCount = document.getElementById('char-count');
-        const btnCopyHtml = document.getElementById('btn-copy-html');
-
-        userInput.addEventListener('input', (e) => {
-            renderText(e.target.value);
-            charCount.innerText = `${e.target.value.length} chars`;
-        });
-
-        // --- 4. Export JPG Feature ---
-        const btnExportJpg = document.getElementById('btn-export-jpg');
-        const filenameInput = document.getElementById('filename-input');
-        const ransomOutput = document.getElementById('ransom-output');
-
-        function getFilename(ext) {
-             let filename = filenameInput.value.trim();
-            if (!filename) {
-                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                filename = `ransom-note-${timestamp}`;
-            }
-            if (!filename.toLowerCase().endsWith('.' + ext)) {
-                filename += '.' + ext;
-            }
-            return filename;
-        }
-
-        btnExportJpg.addEventListener('click', () => {
-             // Basic Validation
-            if (ransomContent.innerText.includes('Waiting for input')) return;
-
-            // Visual Feedback
-            const originalText = btnExportJpg.innerHTML;
-            btnExportJpg.innerText = 'Capturing...';
-            btnExportJpg.disabled = true;
-
-            // Filename Logic
-            const filename = getFilename('jpg');
-
-            // Capture
-            html2canvas(ransomOutput, {
-                scale: 3, // High Res
-                useCORS: true, // For fonts loaded from Google
-                backgroundColor: null, // Transparent if needed, but our div has bg
-            }).then(canvas => {
-                // Convert to blob/url
-                const image = canvas.toDataURL("image/jpeg", 0.9);
-
-                // Trigger Download
-                const link = document.createElement('a');
-                link.href = image;
-                link.download = filename;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-
-                // Reset Button
-                btnExportJpg.innerHTML = originalText;
-                btnExportJpg.disabled = false;
-            }).catch(err => {
-                console.error('Export failed:', err);
-                btnExportJpg.innerText = 'Error!';
-                setTimeout(() => {
-                    btnExportJpg.innerHTML = originalText;
-                    btnExportJpg.disabled = false;
-                }, 2000);
-            });
-        });
-
-        // --- 5. Export Video Timelapse Feature ---
-        const btnOpenVideoModal = document.getElementById('btn-open-video-modal');
-        const videoModal = document.getElementById('video-modal');
-        const btnCloseModal = document.getElementById('btn-close-modal');
-        const fpsInput = document.getElementById('fps-input');
-        const fpsDisplay = document.getElementById('fps-display');
-        const btnGenerateVideo = document.getElementById('btn-generate-video');
-        const progressBar = document.getElementById('progress-bar');
-        const progressText = document.getElementById('progress-text');
-        const progressContainer = document.getElementById('progress-container');
-        const modeBtns = document.querySelectorAll('.mode-btn');
-        let selectedMode = 'char'; // 'char' or 'word'
-
-        // Modal Controls
-        btnOpenVideoModal.addEventListener('click', () => {
-             if (ransomContent.innerText.includes('Waiting for input')) return;
-             videoModal.classList.remove('hidden');
-        });
-        btnCloseModal.addEventListener('click', () => videoModal.classList.add('hidden'));
-
-        fpsInput.addEventListener('input', (e) => fpsDisplay.innerText = e.target.value);
-
-        modeBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                modeBtns.forEach(b => b.classList.remove('active', 'border-purple-500', 'text-purple-400'));
-                btn.classList.add('active', 'border-purple-500', 'text-purple-400');
-                selectedMode = btn.dataset.mode;
-            });
-        });
-
-        // The "Optimized" Video Generator
-        btnGenerateVideo.addEventListener('click', async () => {
-            // UI State
-            btnGenerateVideo.disabled = true;
-            btnGenerateVideo.innerText = "Processing...";
-            progressContainer.classList.remove('hidden');
-            progressBar.style.width = '0%';
-            progressText.innerText = '0%';
-
-            // 1. Capture the "Master" Image (State: Completed Note)
-            // We use high scale for quality, but maybe 2 is enough for video to save memory
-            const canvasScale = 2;
-            const masterCanvas = await html2canvas(ransomOutput, {
-                scale: canvasScale,
-                useCORS: true,
-                backgroundColor: null,
-            });
-
-            // 2. Identify Element Positions relative to the container
-            const containerRect = ransomOutput.getBoundingClientRect();
-            // We need to parse the DOM to find all the spans and their positions
-            // However, html2canvas rendered the DOM *as it was*.
-            // We need to match DOM elements to the canvas pixels.
-
-            const elements = [];
-            const spans = ransomContent.querySelectorAll('span');
-
-            // Helper to add element data
-            const addElement = (el) => {
-                const rect = el.getBoundingClientRect();
-                elements.push({
-                    x: (rect.left - containerRect.left) * canvasScale,
-                    y: (rect.top - containerRect.top) * canvasScale,
-                    w: rect.width * canvasScale,
-                    h: rect.height * canvasScale,
-                    // Store the visual data? No, we will blit from masterCanvas
-                });
-            };
-
-            if (selectedMode === 'char') {
-                spans.forEach(span => addElement(span));
-            } else {
-                // Word mode: group spans by visual proximity or if they are separated by spaces
-                // Actually, the structure uses &nbsp; spans for spaces.
-                // We can group consecutive non-space spans.
-                let currentWordRect = null;
-
-                spans.forEach(span => {
-                    if (span.innerHTML === '&nbsp;') {
-                        if (currentWordRect) {
-                            elements.push(currentWordRect);
-                            currentWordRect = null;
-                        }
-                    } else {
-                        const rect = span.getBoundingClientRect();
-                        const scaledRect = {
-                            x: (rect.left - containerRect.left) * canvasScale,
-                            y: (rect.top - containerRect.top) * canvasScale,
-                            w: rect.width * canvasScale,
-                            h: rect.height * canvasScale
-                        };
-
-                        if (!currentWordRect) {
-                            currentWordRect = scaledRect;
-                        } else {
-                            // Merge rects (simplified: union of boxes)
-                            const minX = Math.min(currentWordRect.x, scaledRect.x);
-                            const minY = Math.min(currentWordRect.y, scaledRect.y);
-                            const maxX = Math.max(currentWordRect.x + currentWordRect.w, scaledRect.x + scaledRect.w);
-                            const maxY = Math.max(currentWordRect.y + currentWordRect.h, scaledRect.y + scaledRect.h);
-                            currentWordRect = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-                        }
-                    }
-                });
-                if (currentWordRect) elements.push(currentWordRect);
-            }
-
-            // 3. Prepare Recording Canvas
-            const videoCanvas = document.createElement('canvas');
-            videoCanvas.width = masterCanvas.width;
-            videoCanvas.height = masterCanvas.height;
-            const ctx = videoCanvas.getContext('2d');
-
-            // Draw Background (Simulate the corkboard)
-            // Since the master canvas has the background, we can capture the "Empty" state first?
-            // Or just fill with the CSS color/pattern.
-            // Better: Capture the "Empty" state from the Master Canvas.
-            // Actually, the Master Canvas HAS all text.
-            // Strategy: We need the BACKGROUND image without text.
-            // Easy hack: Draw the Master Canvas, but for every element area, clear it?
-            // No, because elements might overlap or be rotated.
-            // Correct approach:
-            // 1. Hide all text spans.
-            // 2. Capture background.
-            // 3. Show text spans.
-            // 4. Capture full (already done in step 1? No, do it now).
-
-            // Let's refactor step 1 slightly to get Background vs Foreground.
-
-            // Hide text
-            const originalDisplay = [];
-            spans.forEach((s, i) => {
-                originalDisplay[i] = s.style.opacity;
-                s.style.opacity = '0';
-            });
-            const bgCanvas = await html2canvas(ransomOutput, { scale: canvasScale, useCORS: true });
-
-            // Restore text
-            spans.forEach((s, i) => s.style.opacity = originalDisplay[i]);
-
-            // 4. Start Recording
-            const fps = parseInt(fpsInput.value);
-            const stream = videoCanvas.captureStream(fps);
-            const recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
-
-            const chunks = [];
-            recorder.ondataavailable = e => chunks.push(e.data);
-            recorder.onstop = () => {
-                const blob = new Blob(chunks, { type: 'video/webm' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = getFilename('webm');
-                a.click();
-
-                // Reset UI
-                btnGenerateVideo.disabled = false;
-                btnGenerateVideo.innerText = "Render Video";
-                progressContainer.classList.add('hidden');
-                videoModal.classList.add('hidden');
-            };
-
-            recorder.start();
-
-            // 5. Animation Loop (Blit frames)
-            // We use a manual loop that draws to canvas, then waits.
-            // Since MediaRecorder captures the stream, we just need to update the canvas at the right FPS.
-            // HOWEVER, captureStream(fps) captures at that interval.
-            // We need to synchronize our drawing.
-
-            // Better approach for precision:
-            // Draw Frame -> Wait (1000/fps) -> Draw Frame ...
-            // And keep recorder running.
-
-            ctx.drawImage(bgCanvas, 0, 0); // Start with clean background
-
-            // We need a small delay to let the recorder initialize
-            await new Promise(r => setTimeout(r, 200));
-
-            for (let i = 0; i < elements.length; i++) {
-                // Draw the specific chunk from Master Canvas to Video Canvas
-                const el = elements[i];
-
-                // We copy from MasterCanvas (which has everything) to VideoCanvas
-                // But only the specific rectangle?
-                // Problem: If we just copy the rect, we might copy background too, which is fine since it aligns.
-                // Problem: Overlapping letters. If we draw Letter A, then Letter B.
-                // Letter B's rect might overlap Letter A.
-                // The Master Canvas has both A and B.
-                // If we copy B's rect, we copy the part of A that is "under" B (or over B) correctly.
-                // BUT, if we copy A's rect, we might accidentally copy a piece of B if B overlaps A?
-                // No, because A is rendered BEFORE B in the list.
-                // Actually, random rotation might make B appear "before" A physically but "after" in DOM.
-                // DOM order determines z-index usually.
-
-                // Optimization: The "MasterCanvas" is the FINAL state.
-                // If we copy a rect from Final State, it includes EVERYTHING at that spot (A, B, C overlapping).
-                // This implies that revealing "A" might reveal a bit of "B" if B overlaps A.
-                // This is a known limitation of this "Optimized" Blit approach.
-                // Given the user wants optimization, this "glitch" (letters slightly pre-appearing) is the trade-off.
-                // However, we can minimize it by clipping? No.
-
-                // Let's stick to the BLIT method for speed. It will look like "chunks" of the note appearing.
-
-                ctx.drawImage(masterCanvas, el.x, el.y, el.w, el.h, el.x, el.y, el.w, el.h);
-
-                // Progress
-                const pct = Math.round(((i + 1) / elements.length) * 100);
-                progressBar.style.width = `${pct}%`;
-                progressText.innerText = `${pct}%`;
-
-                // Wait for frame duration
-                await new Promise(r => setTimeout(r, 1000 / fps));
-            }
-
-            // End padding
-            await new Promise(r => setTimeout(r, 1000));
-            recorder.stop();
-        });
-
-        // --- 3. Copy HTML Feature ---
-        btnCopyHtml.addEventListener('click', () => {
-            if (userInput.value.length === 0) return;
-
-            // 1. Identify used fonts
-            const usedFonts = new Set();
-            const spans = ransomContent.getElementsByTagName('span');
-            for (let span of spans) {
-                if (span.dataset.font) {
-                    usedFonts.add(span.dataset.font);
-                }
-            }
-
-            // 2. Build Font Link
-            let fontLinkTag = '';
-            if (usedFonts.size > 0) {
-                const families = Array.from(usedFonts).map(f => f.replace(/ /g, '+')).join('|');
-                fontLinkTag = `<link href="https://fonts.googleapis.com/css?family=${families}&display=swap" rel="stylesheet">`;
-            }
-
-            // 3. Construct HTML String
-            // We strip the classes and keep styles for portability, or we can keep classes if the user has tailwind.
-            // Requirement says "with all inline styles preserved".
-            // The spans already have inline styles. The container 'ransom-output' has classes.
-            // I will create a clean wrapper.
-            const rawContent = ransomContent.innerHTML;
-
-            const clipboardHTML = `
-<!-- The Ransom Note -->
-${fontLinkTag}
-<div style="
-    background-color: #d4a373;
-    background-image: url('data:image/svg+xml,%3Csvg width=\\'40\\' height=\\'40\\' viewBox=\\'0 0 40 40\\' xmlns=\\'http://www.w3.org/2000/svg\\' %3E%3Cg fill=\\'%23faedcd\\' fill-opacity=\\'0.4\\' fill-rule=\\'evenodd\\' %3E%3Cpath d=\\'M0 38.59l2.83-2.83 1.41 1.41L1.41 40H0v-1.41zM0 1.4l2.83 2.83 1.41-1.41L1.41 0H0v1.41zM38.59 40l-2.83-2.83 1.41-1.41L40 38.59V40h-1.41zM40 1.41l-2.83 2.83-1.41-1.41L38.59 0H40v1.41zM20 18.6l2.83-2.83 1.41 1.41L21.41 20l2.83 2.83-1.41 1.41L20 21.41l-2.83 2.83-1.41-1.41L18.59 20l-2.83-2.83 1.41-1.41L20 18.59z\\'/%3E%3C/g%3E%3C/svg%3E');
-    padding: 2rem;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 0.5rem;
-    line-height: 1.6;
-    font-family: monospace;
-">
-${rawContent}
-</div>
-`;
-            navigator.clipboard.writeText(clipboardHTML).then(() => {
-                const originalText = btnCopyHtml.innerHTML;
-                btnCopyHtml.innerHTML = `<span class="text-green-400">Copied!</span>`;
-                setTimeout(() => btnCopyHtml.innerHTML = originalText, 2000);
-            });
-        });
-
-        function getRandomInt(min, max) {
-            return Math.floor(Math.random() * (max - min + 1)) + min;
-        }
-
-        function getRandomFloat(min, max) {
-            return Math.random() * (max - min) + min;
-        }
-
-        function renderText(text) {
-            ransomContent.innerHTML = ''; // Clear previous
-
-            if (!text) {
-                ransomContent.innerHTML = '<span class="font-mono text-gray-800 opacity-50 text-sm">Waiting for input...</span>';
-                return;
-            }
-
-            const chars = text.split('');
-
-            chars.forEach(char => {
-                if (char === ' ') {
-                    // Handle spaces
-                    const span = document.createElement('span');
-                    span.innerHTML = '&nbsp;';
-                    span.style.display = 'inline-block';
-                    span.style.width = '1rem';
-                    ransomContent.appendChild(span);
-                    return;
-                }
-
-                if (char === '\n') {
-                    // Handle newlines
-                    const br = document.createElement('br');
-                    br.style.width = '100%';
-                    br.style.display = 'block';
-                    // Note: flex-wrap handles flow, but break requires force.
-                    // Actually, with flex-wrap, a width:100% div forces a break.
-                    const breakDiv = document.createElement('div');
-                    breakDiv.style.width = '100%';
-                    ransomContent.appendChild(breakDiv);
-                    return;
-                }
-
-                const span = document.createElement('span');
-                span.innerText = char;
-                span.className = 'inline-block shadow-sm select-none transition-transform hover:scale-110';
-
-                // --- Random Styles ---
-
-                // 1. Font Family
-                const font = fontPool[getRandomInt(0, fontPool.length - 1)];
-                span.style.fontFamily = `'${font}', monospace`;
-                span.dataset.font = font; // Store for export
-
-                // 2. Font Size (1.2rem - 2.5rem)
-                const size = getRandomFloat(1.2, 2.5);
-                span.style.fontSize = `${size}rem`;
-
-                // 3. Rotation (-15deg to +15deg)
-                const rot = getRandomInt(-15, 15);
-                span.style.transform = `rotate(${rot}deg)`;
-
-                // 4. Vertical Align (offset)
-                const yOffset = getRandomInt(-5, 5);
-                span.style.transform += ` translateY(${yOffset}px)`;
-
-                // 5. Background & Color
-                // 20% White/Cream, 5% Black, 75% Transparent
-                const bgRoll = Math.random();
-                let bg, color, padding;
-
-                if (bgRoll < 0.05) {
-                    // Black inverted
-                    bg = '#111';
-                    color = '#eee';
-                    padding = getRandomInt(1, 4);
-                } else if (bgRoll < 0.25) { // 0.05 + 0.20
-                    // White/Cream
-                    const creams = ['#fdfbf7', '#fff', '#f0f0f0', '#fffff0'];
-                    bg = creams[getRandomInt(0, creams.length - 1)];
-                    color = Math.random() > 0.5 ? '#111' : '#8b0000'; // Black or Dark Red
-                    padding = getRandomInt(1, 4);
-                } else {
-                    // Transparent
-                    bg = 'transparent';
-                    color = Math.random() > 0.5 ? '#111' : '#8b0000';
-                    padding = 0;
-                }
-
-                span.style.backgroundColor = bg;
-                span.style.color = color;
-                span.style.padding = `${padding}px`;
-
-                // Extra: Border Radius for paper cut look (sometimes sharp, sometimes rough)
-                if (bg !== 'transparent') {
-                    span.style.borderRadius = `${getRandomInt(0, 2)}px`;
-                }
-
-                ransomContent.appendChild(span);
-            });
-        }
-
-    </script>
+    <!-- Logic Scripts -->
+    <script src="js/fonts.js"></script>
+    <script src="js/video.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>
