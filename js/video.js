@@ -1,6 +1,24 @@
 // --- Video Logic ---
 
+/**
+ * Generates a video based on the provided configuration.
+ * Routes to specific generation functions based on 'style'.
+ */
 async function generateVideo(config) {
+    const { style } = config;
+
+    if (style === 'flash') {
+        return generateFlashVideo(config);
+    } else {
+        return generateTimelapseVideo(config);
+    }
+}
+
+/**
+ * 1. Timelapse (Cumulative Reveal) Logic
+ * Uses the High-Quality Crop logic from V2.
+ */
+async function generateTimelapseVideo(config) {
     const {
         fps,
         mode,
@@ -10,32 +28,158 @@ async function generateVideo(config) {
         onComplete
     } = config;
 
-    // 1. Capture the "Master" Image (State: Completed Note)
-    const canvasScale = 3; // High res for video
-    // Use html2canvas to capture the visual state of the DOM
+    const canvasScale = 3;
     const masterCanvas = await html2canvas(ransomOutput, {
         scale: canvasScale,
         useCORS: true,
         backgroundColor: null,
     });
 
-    // 2. Identify Element Positions and Crop Box
-    const containerRect = ransomOutput.getBoundingClientRect();
-    const elements = [];
-    const spans = ransomContent.querySelectorAll('span');
+    // Extract Elements and Crop Bounds
+    const { elements, bounds } = getElementsAndBounds(ransomOutput, ransomContent, mode, canvasScale, masterCanvas.width, masterCanvas.height);
+    const { minX, minY, cropW, cropH } = bounds;
 
-    // Track min/max for crop logic
+    const videoCanvas = document.createElement('canvas');
+    videoCanvas.width = cropW;
+    videoCanvas.height = cropH;
+    const ctx = videoCanvas.getContext('2d');
+
+    // Background Capture
+    const bgCanvas = await captureBackground(ransomOutput, ransomContent, canvasScale);
+
+    // Setup Recorder
+    const stream = videoCanvas.captureStream(fps);
+    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+    const chunks = [];
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        onComplete(URL.createObjectURL(blob));
+    };
+
+    recorder.start();
+
+    // Draw Static Background
+    ctx.drawImage(bgCanvas, minX, minY, cropW, cropH, 0, 0, cropW, cropH);
+
+    await new Promise(r => setTimeout(r, 200));
+
+    // Animation Loop
+    for (let i = 0; i < elements.length; i++) {
+        const el = elements[i];
+        ctx.drawImage(masterCanvas, el.x, el.y, el.w, el.h, el.x - minX, el.y - minY, el.w, el.h);
+        if (onProgress) onProgress(((i + 1) / elements.length) * 100);
+        await new Promise(r => setTimeout(r, 1000 / fps));
+    }
+
+    await new Promise(r => setTimeout(r, 1000));
+    recorder.stop();
+}
+
+/**
+ * 2. Flash (Zoom/Center) Logic
+ * Shows one word at a time, zoomed in.
+ */
+async function generateFlashVideo(config) {
+    const {
+        fps,
+        mode,
+        ransomOutput,
+        ransomContent,
+        onProgress,
+        onComplete
+    } = config;
+
+    const canvasScale = 3;
+    const masterCanvas = await html2canvas(ransomOutput, {
+        scale: canvasScale,
+        useCORS: true,
+        backgroundColor: null,
+    });
+
+    const { elements, bounds } = getElementsAndBounds(ransomOutput, ransomContent, mode, canvasScale, masterCanvas.width, masterCanvas.height);
+    const { minX, minY, cropW, cropH } = bounds;
+
+    // Use a fixed aspect ratio or square?
+    // User asked for "Full Screen". We'll stick to the aspect ratio of the crop to avoid distortion,
+    // but we can make the canvas larger or smaller. Let's match the crop size for consistency.
+    const videoCanvas = document.createElement('canvas');
+    videoCanvas.width = cropW;
+    videoCanvas.height = cropH;
+    const ctx = videoCanvas.getContext('2d');
+
+    const bgCanvas = await captureBackground(ransomOutput, ransomContent, canvasScale);
+
+    const stream = videoCanvas.captureStream(fps);
+    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+    const chunks = [];
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        onComplete(URL.createObjectURL(blob));
+    };
+
+    recorder.start();
+
+    // Loop
+    for (let i = 0; i < elements.length; i++) {
+        const el = elements[i];
+
+        // 1. Draw Background (Reset frame)
+        ctx.drawImage(bgCanvas, minX, minY, cropW, cropH, 0, 0, cropW, cropH);
+
+        // 2. Draw Element Zoomed & Centered
+        // Target: Center of videoCanvas
+        const cx = videoCanvas.width / 2;
+        const cy = videoCanvas.height / 2;
+
+        // Scale Factor: Fit element to 80% of canvas
+        const scaleX = (videoCanvas.width * 0.8) / el.w;
+        const scaleY = (videoCanvas.height * 0.8) / el.h;
+        const scale = Math.min(scaleX, scaleY); // Fit within bounds
+
+        const dw = el.w * scale;
+        const dh = el.h * scale;
+        const dx = cx - (dw / 2);
+        const dy = cy - (dh / 2);
+
+        ctx.drawImage(masterCanvas, el.x, el.y, el.w, el.h, dx, dy, dw, dh);
+
+        if (onProgress) onProgress(((i + 1) / elements.length) * 100);
+        await new Promise(r => setTimeout(r, 1000 / fps));
+    }
+
+    await new Promise(r => setTimeout(r, 1000));
+    recorder.stop();
+}
+
+// --- Helpers ---
+
+async function captureBackground(container, content, scale) {
+    const spans = content.querySelectorAll('span');
+    const originalDisplay = [];
+    spans.forEach((s, i) => {
+        originalDisplay[i] = s.style.opacity;
+        s.style.opacity = '0';
+    });
+    const canvas = await html2canvas(container, { scale: scale, useCORS: true });
+    spans.forEach((s, i) => s.style.opacity = originalDisplay[i]);
+    return canvas;
+}
+
+function getElementsAndBounds(container, content, mode, scale, maxW, maxH) {
+    const containerRect = container.getBoundingClientRect();
+    const elements = [];
+    const spans = content.querySelectorAll('span');
+
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
-    // Helper to process a rect
     const processRect = (rect) => {
-        // Relative to container
-        const rx = (rect.left - containerRect.left) * canvasScale;
-        const ry = (rect.top - containerRect.top) * canvasScale;
-        const rw = rect.width * canvasScale;
-        const rh = rect.height * canvasScale;
+        const rx = (rect.left - containerRect.left) * scale;
+        const ry = (rect.top - containerRect.top) * scale;
+        const rw = rect.width * scale;
+        const rh = rect.height * scale;
 
-        // Update bounds (add some padding logic later)
         if (rx < minX) minX = rx;
         if (ry < minY) minY = ry;
         if (rx + rw > maxX) maxX = rx + rw;
@@ -66,7 +210,6 @@ async function generateVideo(config) {
                 if (!currentWordRect) {
                     currentWordRect = processed;
                 } else {
-                    // Union
                     const nx = Math.min(currentWordRect.x, processed.x);
                     const ny = Math.min(currentWordRect.y, processed.y);
                     const nw = Math.max(currentWordRect.x + currentWordRect.w, processed.x + processed.w) - nx;
@@ -78,74 +221,18 @@ async function generateVideo(config) {
         if (currentWordRect) elements.push(currentWordRect);
     }
 
-    // 3. Setup Cropped Canvas
-    const padding = 50 * canvasScale;
-
-    // If no text, default to full
-    if (minX === Infinity) { minX = 0; minY = 0; maxX = masterCanvas.width; maxY = masterCanvas.height; }
-
-    // Apply padding
+    // Bounds padding
+    const padding = 50 * scale;
+    if (minX === Infinity) { minX = 0; minY = 0; maxX = maxW; maxY = maxH; }
     minX = Math.max(0, minX - padding);
     minY = Math.max(0, minY - padding);
-    maxX = Math.min(masterCanvas.width, maxX + padding);
-    maxY = Math.min(masterCanvas.height, maxY + padding);
+    maxX = Math.min(maxW, maxX + padding);
+    maxY = Math.min(maxH, maxY + padding);
 
-    const cropW = maxX - minX;
-    const cropH = maxY - minY;
-
-    const videoCanvas = document.createElement('canvas');
-    videoCanvas.width = cropW;
-    videoCanvas.height = cropH;
-    const ctx = videoCanvas.getContext('2d');
-
-    // 4. Background Capture (Empty State)
-    // Hide text to get clean background
-    const originalDisplay = [];
-    spans.forEach((s, i) => {
-        originalDisplay[i] = s.style.opacity;
-        s.style.opacity = '0';
-    });
-    const bgCanvas = await html2canvas(ransomOutput, { scale: canvasScale, useCORS: true });
-    // Restore text
-    spans.forEach((s, i) => s.style.opacity = originalDisplay[i]);
-
-    // 5. Start Recording
-    const stream = videoCanvas.captureStream(fps);
-    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
-    const chunks = [];
-
-    recorder.ondataavailable = e => chunks.push(e.data);
-    recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        onComplete(url);
+    return {
+        elements,
+        bounds: { minX, minY, cropW: maxX - minX, cropH: maxY - minY }
     };
-
-    recorder.start();
-
-    // 6. Animation Loop
-    // Draw Background (Cropped)
-    ctx.drawImage(bgCanvas, minX, minY, cropW, cropH, 0, 0, cropW, cropH);
-
-    await new Promise(r => setTimeout(r, 200)); // Init delay
-
-    for (let i = 0; i < elements.length; i++) {
-        const el = elements[i];
-
-        // Draw Chunk (Cropped coordinates)
-        // Source: el.x, el.y (from master canvas)
-        // Dest: el.x - minX, el.y - minY (shifted by crop)
-        ctx.drawImage(masterCanvas, el.x, el.y, el.w, el.h, el.x - minX, el.y - minY, el.w, el.h);
-
-        // Progress
-        if (onProgress) onProgress(((i + 1) / elements.length) * 100);
-
-        // Wait
-        await new Promise(r => setTimeout(r, 1000 / fps));
-    }
-
-    await new Promise(r => setTimeout(r, 1000)); // End delay
-    recorder.stop();
 }
 
 window.generateVideo = generateVideo;

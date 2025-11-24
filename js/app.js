@@ -251,7 +251,9 @@ const progressBar = document.getElementById('progress-bar');
 const progressText = document.getElementById('progress-text');
 const progressContainer = document.getElementById('progress-container');
 const modeBtns = document.querySelectorAll('.mode-btn');
+const styleBtns = document.querySelectorAll('.style-btn');
 let selectedMode = 'char';
+let selectedStyle = 'timelapse';
 
 btnOpenVideoModal.addEventListener('click', () => {
     if (ransomContent.innerText.includes('Waiting for input')) return;
@@ -260,11 +262,20 @@ btnOpenVideoModal.addEventListener('click', () => {
 btnCloseModal.addEventListener('click', () => videoModal.classList.add('hidden'));
 
 fpsInput.addEventListener('input', (e) => fpsDisplay.innerText = e.target.value);
+
 modeBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         modeBtns.forEach(b => b.classList.remove('active', 'border-purple-500', 'text-purple-400'));
         btn.classList.add('active', 'border-purple-500', 'text-purple-400');
         selectedMode = btn.dataset.mode;
+    });
+});
+
+styleBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        styleBtns.forEach(b => b.classList.remove('active', 'border-purple-500', 'text-purple-400'));
+        btn.classList.add('active', 'border-purple-500', 'text-purple-400');
+        selectedStyle = btn.dataset.style;
     });
 });
 
@@ -278,6 +289,7 @@ btnGenerateVideo.addEventListener('click', () => {
     window.generateVideo({
         fps: parseInt(fpsInput.value),
         mode: selectedMode,
+        style: selectedStyle,
         ransomOutput: ransomOutput,
         ransomContent: ransomContent,
         onProgress: (pct) => {

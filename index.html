@@ -89,9 +89,18 @@
                 <h2 class="text-xl text-purple-400 font-bold uppercase tracking-widest mb-4">Export Video Timelapse</h2>
 
                 <div class="space-y-4">
-                    <!-- Mode Selection -->
+                    <!-- Style Selection -->
                     <div>
-                        <label class="block text-xs text-gray-400 font-mono uppercase mb-2">Reveal Mode</label>
+                        <label class="block text-xs text-gray-400 font-mono uppercase mb-2">Video Style</label>
+                        <div class="flex gap-2">
+                            <button class="style-btn flex-1 py-2 border border-gray-600 text-gray-400 text-sm hover:border-purple-500 hover:text-purple-400 transition-all active" data-style="timelapse">Timelapse</button>
+                            <button class="style-btn flex-1 py-2 border border-gray-600 text-gray-400 text-sm hover:border-purple-500 hover:text-purple-400 transition-all" data-style="flash">Flash (Zoom)</button>
+                        </div>
+                    </div>
+
+                    <!-- Granularity Selection -->
+                    <div>
+                        <label class="block text-xs text-gray-400 font-mono uppercase mb-2">Granularity</label>
                         <div class="flex gap-2">
                             <button class="mode-btn flex-1 py-2 border border-gray-600 text-gray-400 text-sm hover:border-purple-500 hover:text-purple-400 transition-all active" data-mode="char">Character</button>
                             <button class="mode-btn flex-1 py-2 border border-gray-600 text-gray-400 text-sm hover:border-purple-500 hover:text-purple-400 transition-all" data-mode="word">Word</button>
