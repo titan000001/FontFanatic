@@ -8,6 +8,12 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- html2canvas -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- Whammy (Lightweight WebM Encoder) -->
+    <!-- We will inject a minimal version of Whammy or a simple MediaRecorder helper manually to avoid external dependency failure on some networks if possible,
+         but using a reliable CDN for whammy or webm-muxer is better.
+         Let's use the native MediaRecorder API since it is supported in all modern browsers (Chrome/Firefox/Safari).
+         No extra library needed if we capture canvas stream!
+    -->
     <style>
         /* Custom Styles for Textures and Scrollbars */
         body {
@@ -84,12 +90,63 @@
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                         </svg>
-                        Export JPG
+                        JPG
                     </span>
                     <div class="absolute inset-0 bg-red-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 </button>
+
+                <button id="btn-open-video-modal" class="group relative px-4 py-2 bg-gray-900 border border-purple-500/50 text-purple-400 font-mono text-sm uppercase tracking-wide hover:bg-purple-900/20 hover:border-purple-400 transition-all">
+                    <span class="relative z-10 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        Video
+                    </span>
+                    <div class="absolute inset-0 bg-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                </button>
             </div>
         </header>
+
+        <!-- Video Settings Modal (Hidden by default) -->
+        <div id="video-modal" class="fixed inset-0 bg-black/80 hidden z-50 flex items-center justify-center backdrop-blur-sm">
+            <div class="bg-gray-900 border border-purple-500 p-6 rounded-sm shadow-[0_0_20px_rgba(168,85,247,0.5)] max-w-md w-full relative">
+                <button id="btn-close-modal" class="absolute top-2 right-2 text-gray-500 hover:text-white">&times;</button>
+                <h2 class="text-xl text-purple-400 font-bold uppercase tracking-widest mb-4">Export Video Timelapse</h2>
+
+                <div class="space-y-4">
+                    <!-- Mode Selection -->
+                    <div>
+                        <label class="block text-xs text-gray-400 font-mono uppercase mb-2">Reveal Mode</label>
+                        <div class="flex gap-2">
+                            <button class="mode-btn flex-1 py-2 border border-gray-600 text-gray-400 text-sm hover:border-purple-500 hover:text-purple-400 transition-all active" data-mode="char">Character</button>
+                            <button class="mode-btn flex-1 py-2 border border-gray-600 text-gray-400 text-sm hover:border-purple-500 hover:text-purple-400 transition-all" data-mode="word">Word</button>
+                        </div>
+                    </div>
+
+                    <!-- Speed Selection -->
+                    <div>
+                        <label class="block text-xs text-gray-400 font-mono uppercase mb-2">Speed (FPS): <span id="fps-display" class="text-white">10</span></label>
+                        <input type="range" id="fps-input" min="1" max="30" value="10" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500">
+                    </div>
+
+                    <!-- Generate Button -->
+                    <button id="btn-generate-video" class="w-full py-3 bg-purple-900/50 border border-purple-500 text-purple-300 font-bold uppercase tracking-widest hover:bg-purple-500 hover:text-white transition-all">
+                        Render Video
+                    </button>
+
+                    <!-- Progress Bar (Hidden initially) -->
+                    <div id="progress-container" class="hidden mt-4">
+                        <div class="flex justify-between text-xs text-gray-400 mb-1">
+                            <span>Processing...</span>
+                            <span id="progress-text">0%</span>
+                        </div>
+                        <div class="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
+                            <div id="progress-bar" class="bg-purple-500 h-full w-0 transition-all duration-100"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Main Workspace -->
         <main class="flex-1 flex flex-col md:flex-row gap-6 min-h-0">
@@ -182,6 +239,18 @@
         const filenameInput = document.getElementById('filename-input');
         const ransomOutput = document.getElementById('ransom-output');
 
+        function getFilename(ext) {
+             let filename = filenameInput.value.trim();
+            if (!filename) {
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                filename = `ransom-note-${timestamp}`;
+            }
+            if (!filename.toLowerCase().endsWith('.' + ext)) {
+                filename += '.' + ext;
+            }
+            return filename;
+        }
+
         btnExportJpg.addEventListener('click', () => {
              // Basic Validation
             if (ransomContent.innerText.includes('Waiting for input')) return;
@@ -192,14 +261,7 @@
             btnExportJpg.disabled = true;
 
             // Filename Logic
-            let filename = filenameInput.value.trim();
-            if (!filename) {
-                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                filename = `ransom-note-${timestamp}`;
-            }
-            if (!filename.toLowerCase().endsWith('.jpg')) {
-                filename += '.jpg';
-            }
+            const filename = getFilename('jpg');
 
             // Capture
             html2canvas(ransomOutput, {
@@ -229,6 +291,226 @@
                     btnExportJpg.disabled = false;
                 }, 2000);
             });
+        });
+
+        // --- 5. Export Video Timelapse Feature ---
+        const btnOpenVideoModal = document.getElementById('btn-open-video-modal');
+        const videoModal = document.getElementById('video-modal');
+        const btnCloseModal = document.getElementById('btn-close-modal');
+        const fpsInput = document.getElementById('fps-input');
+        const fpsDisplay = document.getElementById('fps-display');
+        const btnGenerateVideo = document.getElementById('btn-generate-video');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        const progressContainer = document.getElementById('progress-container');
+        const modeBtns = document.querySelectorAll('.mode-btn');
+        let selectedMode = 'char'; // 'char' or 'word'
+
+        // Modal Controls
+        btnOpenVideoModal.addEventListener('click', () => {
+             if (ransomContent.innerText.includes('Waiting for input')) return;
+             videoModal.classList.remove('hidden');
+        });
+        btnCloseModal.addEventListener('click', () => videoModal.classList.add('hidden'));
+
+        fpsInput.addEventListener('input', (e) => fpsDisplay.innerText = e.target.value);
+
+        modeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                modeBtns.forEach(b => b.classList.remove('active', 'border-purple-500', 'text-purple-400'));
+                btn.classList.add('active', 'border-purple-500', 'text-purple-400');
+                selectedMode = btn.dataset.mode;
+            });
+        });
+
+        // The "Optimized" Video Generator
+        btnGenerateVideo.addEventListener('click', async () => {
+            // UI State
+            btnGenerateVideo.disabled = true;
+            btnGenerateVideo.innerText = "Processing...";
+            progressContainer.classList.remove('hidden');
+            progressBar.style.width = '0%';
+            progressText.innerText = '0%';
+
+            // 1. Capture the "Master" Image (State: Completed Note)
+            // We use high scale for quality, but maybe 2 is enough for video to save memory
+            const canvasScale = 2;
+            const masterCanvas = await html2canvas(ransomOutput, {
+                scale: canvasScale,
+                useCORS: true,
+                backgroundColor: null,
+            });
+
+            // 2. Identify Element Positions relative to the container
+            const containerRect = ransomOutput.getBoundingClientRect();
+            // We need to parse the DOM to find all the spans and their positions
+            // However, html2canvas rendered the DOM *as it was*.
+            // We need to match DOM elements to the canvas pixels.
+
+            const elements = [];
+            const spans = ransomContent.querySelectorAll('span');
+
+            // Helper to add element data
+            const addElement = (el) => {
+                const rect = el.getBoundingClientRect();
+                elements.push({
+                    x: (rect.left - containerRect.left) * canvasScale,
+                    y: (rect.top - containerRect.top) * canvasScale,
+                    w: rect.width * canvasScale,
+                    h: rect.height * canvasScale,
+                    // Store the visual data? No, we will blit from masterCanvas
+                });
+            };
+
+            if (selectedMode === 'char') {
+                spans.forEach(span => addElement(span));
+            } else {
+                // Word mode: group spans by visual proximity or if they are separated by spaces
+                // Actually, the structure uses &nbsp; spans for spaces.
+                // We can group consecutive non-space spans.
+                let currentWordRect = null;
+
+                spans.forEach(span => {
+                    if (span.innerHTML === '&nbsp;') {
+                        if (currentWordRect) {
+                            elements.push(currentWordRect);
+                            currentWordRect = null;
+                        }
+                    } else {
+                        const rect = span.getBoundingClientRect();
+                        const scaledRect = {
+                            x: (rect.left - containerRect.left) * canvasScale,
+                            y: (rect.top - containerRect.top) * canvasScale,
+                            w: rect.width * canvasScale,
+                            h: rect.height * canvasScale
+                        };
+
+                        if (!currentWordRect) {
+                            currentWordRect = scaledRect;
+                        } else {
+                            // Merge rects (simplified: union of boxes)
+                            const minX = Math.min(currentWordRect.x, scaledRect.x);
+                            const minY = Math.min(currentWordRect.y, scaledRect.y);
+                            const maxX = Math.max(currentWordRect.x + currentWordRect.w, scaledRect.x + scaledRect.w);
+                            const maxY = Math.max(currentWordRect.y + currentWordRect.h, scaledRect.y + scaledRect.h);
+                            currentWordRect = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+                        }
+                    }
+                });
+                if (currentWordRect) elements.push(currentWordRect);
+            }
+
+            // 3. Prepare Recording Canvas
+            const videoCanvas = document.createElement('canvas');
+            videoCanvas.width = masterCanvas.width;
+            videoCanvas.height = masterCanvas.height;
+            const ctx = videoCanvas.getContext('2d');
+
+            // Draw Background (Simulate the corkboard)
+            // Since the master canvas has the background, we can capture the "Empty" state first?
+            // Or just fill with the CSS color/pattern.
+            // Better: Capture the "Empty" state from the Master Canvas.
+            // Actually, the Master Canvas HAS all text.
+            // Strategy: We need the BACKGROUND image without text.
+            // Easy hack: Draw the Master Canvas, but for every element area, clear it?
+            // No, because elements might overlap or be rotated.
+            // Correct approach:
+            // 1. Hide all text spans.
+            // 2. Capture background.
+            // 3. Show text spans.
+            // 4. Capture full (already done in step 1? No, do it now).
+
+            // Let's refactor step 1 slightly to get Background vs Foreground.
+
+            // Hide text
+            const originalDisplay = [];
+            spans.forEach((s, i) => {
+                originalDisplay[i] = s.style.opacity;
+                s.style.opacity = '0';
+            });
+            const bgCanvas = await html2canvas(ransomOutput, { scale: canvasScale, useCORS: true });
+
+            // Restore text
+            spans.forEach((s, i) => s.style.opacity = originalDisplay[i]);
+
+            // 4. Start Recording
+            const fps = parseInt(fpsInput.value);
+            const stream = videoCanvas.captureStream(fps);
+            const recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+
+            const chunks = [];
+            recorder.ondataavailable = e => chunks.push(e.data);
+            recorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = getFilename('webm');
+                a.click();
+
+                // Reset UI
+                btnGenerateVideo.disabled = false;
+                btnGenerateVideo.innerText = "Render Video";
+                progressContainer.classList.add('hidden');
+                videoModal.classList.add('hidden');
+            };
+
+            recorder.start();
+
+            // 5. Animation Loop (Blit frames)
+            // We use a manual loop that draws to canvas, then waits.
+            // Since MediaRecorder captures the stream, we just need to update the canvas at the right FPS.
+            // HOWEVER, captureStream(fps) captures at that interval.
+            // We need to synchronize our drawing.
+
+            // Better approach for precision:
+            // Draw Frame -> Wait (1000/fps) -> Draw Frame ...
+            // And keep recorder running.
+
+            ctx.drawImage(bgCanvas, 0, 0); // Start with clean background
+
+            // We need a small delay to let the recorder initialize
+            await new Promise(r => setTimeout(r, 200));
+
+            for (let i = 0; i < elements.length; i++) {
+                // Draw the specific chunk from Master Canvas to Video Canvas
+                const el = elements[i];
+
+                // We copy from MasterCanvas (which has everything) to VideoCanvas
+                // But only the specific rectangle?
+                // Problem: If we just copy the rect, we might copy background too, which is fine since it aligns.
+                // Problem: Overlapping letters. If we draw Letter A, then Letter B.
+                // Letter B's rect might overlap Letter A.
+                // The Master Canvas has both A and B.
+                // If we copy B's rect, we copy the part of A that is "under" B (or over B) correctly.
+                // BUT, if we copy A's rect, we might accidentally copy a piece of B if B overlaps A?
+                // No, because A is rendered BEFORE B in the list.
+                // Actually, random rotation might make B appear "before" A physically but "after" in DOM.
+                // DOM order determines z-index usually.
+
+                // Optimization: The "MasterCanvas" is the FINAL state.
+                // If we copy a rect from Final State, it includes EVERYTHING at that spot (A, B, C overlapping).
+                // This implies that revealing "A" might reveal a bit of "B" if B overlaps A.
+                // This is a known limitation of this "Optimized" Blit approach.
+                // Given the user wants optimization, this "glitch" (letters slightly pre-appearing) is the trade-off.
+                // However, we can minimize it by clipping? No.
+
+                // Let's stick to the BLIT method for speed. It will look like "chunks" of the note appearing.
+
+                ctx.drawImage(masterCanvas, el.x, el.y, el.w, el.h, el.x, el.y, el.w, el.h);
+
+                // Progress
+                const pct = Math.round(((i + 1) / elements.length) * 100);
+                progressBar.style.width = `${pct}%`;
+                progressText.innerText = `${pct}%`;
+
+                // Wait for frame duration
+                await new Promise(r => setTimeout(r, 1000 / fps));
+            }
+
+            // End padding
+            await new Promise(r => setTimeout(r, 1000));
+            recorder.stop();
         });
 
         // --- 3. Copy HTML Feature ---
