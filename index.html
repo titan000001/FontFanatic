@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Ransom Engine</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- html2canvas -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        /* Custom Styles for Textures and Scrollbars */
+        body {
+            background-color: #111827; /* Gray 900 */
+            color: #e5e7eb; /* Gray 200 */
+        }
+
+        .ransom-font-preload {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+            z-index: -999;
+        }
+
+        /* Corkboard Texture */
+        .texture-cork {
+            background-color: #d4a373;
+            background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23faedcd' fill-opacity='0.4' fill-rule='evenodd'%3E%3Cpath d='M0 38.59l2.83-2.83 1.41 1.41L1.41 40H0v-1.41zM0 1.4l2.83 2.83 1.41-1.41L1.41 0H0v1.41zM38.59 40l-2.83-2.83 1.41-1.41L40 38.59V40h-1.41zM40 1.41l-2.83 2.83-1.41-1.41L38.59 0H40v1.41zM20 18.6l2.83-2.83 1.41 1.41L21.41 20l2.83 2.83-1.41 1.41L20 21.41l-2.83 2.83-1.41-1.41L18.59 20l-2.83-2.83 1.41-1.41L20 18.59z'/%3E%3C/g%3E%3C/svg%3E");
+        }
+
+        /* Cardboard Texture */
+        .texture-cardboard {
+            background-color: #c0a080;
+            background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.05) 0px, rgba(0,0,0,0.05) 2px, transparent 2px, transparent 4px);
+        }
+
+        /* Cyberpunk Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #ef4444;
+            border-radius: 2px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #dc2626;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden font-mono">
+    <!-- App Content -->
+    <div id="app-root" class="flex-1 flex flex-col p-6 gap-6 max-w-7xl mx-auto w-full">
+        <!-- Header / Control Bar -->
+        <header class="flex flex-col md:flex-row justify-between items-center gap-4 border-b border-gray-800 pb-4">
+            <div>
+                <h1 class="text-4xl text-red-500 font-bold uppercase tracking-widest drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]" style="font-family: 'Rubik Glitch', 'Courier New', monospace;">
+                    The Ransom Engine
+                </h1>
+                <p class="text-xs text-gray-500 font-mono mt-1">Status: <span id="status-indicator" class="text-green-500">Initializing...</span></p>
+            </div>
+
+            <div class="flex flex-wrap gap-3 items-center">
+                <!-- Filename Input -->
+                <input type="text" id="filename-input" placeholder="filename"
+                    class="bg-gray-800 border border-gray-700 text-gray-300 text-sm rounded-sm px-3 py-2 outline-none focus:border-red-500 font-mono w-32 placeholder-gray-600 transition-colors">
+
+                <!-- Export Buttons -->
+                <button id="btn-copy-html" class="group relative px-4 py-2 bg-gray-900 border border-cyan-500/50 text-cyan-400 font-mono text-sm uppercase tracking-wide hover:bg-cyan-900/20 hover:border-cyan-400 transition-all">
+                    <span class="relative z-10 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        Copy HTML
+                    </span>
+                    <div class="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                </button>
+
+                <button id="btn-export-jpg" class="group relative px-4 py-2 bg-gray-900 border border-red-500/50 text-red-400 font-mono text-sm uppercase tracking-wide hover:bg-red-900/20 hover:border-red-400 transition-all">
+                    <span class="relative z-10 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Export JPG
+                    </span>
+                    <div class="absolute inset-0 bg-red-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Workspace -->
+        <main class="flex-1 flex flex-col md:flex-row gap-6 min-h-0">
+            <!-- Left: Input -->
+            <div class="w-full md:w-1/3 flex flex-col gap-2">
+                <label for="user-input" class="text-xs text-gray-400 font-mono uppercase tracking-wider">Target Message</label>
+                <textarea id="user-input"
+                    class="flex-1 w-full bg-gray-800/50 border border-gray-700 text-gray-200 p-4 font-mono text-lg resize-none outline-none focus:border-red-500/50 focus:bg-gray-800 transition-all rounded-sm"
+                    placeholder="Type your ransom note here..."></textarea>
+                <div class="text-xs text-gray-600 text-right font-mono" id="char-count">0 chars</div>
+            </div>
+
+            <!-- Right: Output Canvas -->
+            <div class="w-full md:w-2/3 bg-gray-800 rounded-sm border border-gray-700 relative overflow-hidden flex flex-col">
+                <div class="absolute top-0 left-0 bg-gray-900 text-gray-500 text-[10px] px-2 py-1 font-mono border-b border-r border-gray-700 z-10">
+                    PREVIEW
+                </div>
+
+                <!-- Scrollable Wrapper -->
+                <div class="flex-1 overflow-auto p-8 flex items-center justify-center bg-gray-900">
+                    <!-- The Ransom Note Container (The element to export) -->
+                    <div id="ransom-output" class="texture-cork shadow-[0_10px_30px_rgba(0,0,0,0.5)] min-w-[300px] min-h-[300px] p-8 max-w-full transform transition-transform duration-200 origin-center">
+                        <div id="ransom-content" class="flex flex-wrap gap-x-1 gap-y-2 content-start break-words whitespace-pre-wrap leading-relaxed">
+                            <!-- Spans will go here -->
+                            <span class="font-mono text-gray-800 opacity-50 text-sm">Waiting for input...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // --- 1. The "Expensive" Font Pool ---
+        const fontPool = [
+            "Creepster", "Lobster", "Rye", "Monoton", "Press Start 2P", "Special Elite", "Abril Fatface",
+            "Bangers", "Fredoka One", "Righteous", "Bungee", "Indie Flower", "Shadows Into Light",
+            "Pacifico", "Amatic SC", "Permanent Marker", "Gloria Hallelujah", "Courgette", "Satisfy",
+            "Great Vibes", "Sacramento", "Orbitron", "Black Ops One", "Russo One", "Luckiest Guy",
+            "VT323", "Ultra", "Pinyon Script", "Cinzel", "Parisienne", "Audiowide", "Kaushan Script",
+            "Rock Salt", "Chewy", "Sigmar One", "Carter One", "Freckle Face", "Love Ya Like A Sister",
+            "Finger Paint", "Nosifer", "Eater", "Butcherman", "Frijole", "Metal Mania", "Flavors",
+            "Spicy Rice", "Ranchers", "Caesar Dressing", "Shojumaru", "Trade Winds", "Ewert",
+            "Sancreek", "UnifrakturMaguntia", "Pirata One", "New Rocker", "Jolly Lodger", "Piedra",
+            "Geostar", "Limelight", "Fontdiner Swanky", "Irish Grover", "Knewave", "Ribeye Marrow",
+            "Chicle", "Fascinate Inline", "Vast Shadow", "Graduate", "Stint Ultra Expanded", "Codystar",
+            "Faster One", "Henny Penny", "Snowburst One", "Emblema One", "Plaster", "Sirin Stencil",
+            "Stardos Stencil", "Allerta Stencil", "Wallpoet", "Bungee Shade", "Bungee Inline", "Megrim",
+            "Pompiere", "Coming Soon", "Just Another Hand", "Covered By Your Grace", "Walter Turncoat",
+            "Gochi Hand", "Patrick Hand", "Schoolbell", "Sunshiney", "Sniglet", "Slackey", "Kranky",
+            "Crushed", "Smokum", "Unkempt", "Crafty Girls", "Aclonica", "Rakkas", "Yatra One"
+        ];
+
+        // --- Font Loading Logic ---
+        function loadFonts() {
+            const BATCH_SIZE = 15;
+            const head = document.getElementsByTagName('head')[0];
+            let loadedCount = 0;
+
+            for (let i = 0; i < fontPool.length; i += BATCH_SIZE) {
+                const batch = fontPool.slice(i, i + BATCH_SIZE);
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                // Encode font names for URL (spaces to +)
+                const families = batch.map(font => font.replace(/ /g, '+')).join('|');
+                link.href = `https://fonts.googleapis.com/css?family=${families}&display=swap`;
+                head.appendChild(link);
+                loadedCount += batch.length;
+            }
+            console.log(`Requested ${loadedCount} fonts from Google.`);
+            document.getElementById('status-indicator').innerText = "Ransom Engine Ready";
+        }
+
+        // Initialize
+        loadFonts();
+
+        // --- 2. The Character Rendering Engine ---
+        const userInput = document.getElementById('user-input');
+        const ransomContent = document.getElementById('ransom-content');
+        const charCount = document.getElementById('char-count');
+        const btnCopyHtml = document.getElementById('btn-copy-html');
+
+        userInput.addEventListener('input', (e) => {
+            renderText(e.target.value);
+            charCount.innerText = `${e.target.value.length} chars`;
+        });
+
+        // --- 4. Export JPG Feature ---
+        const btnExportJpg = document.getElementById('btn-export-jpg');
+        const filenameInput = document.getElementById('filename-input');
+        const ransomOutput = document.getElementById('ransom-output');
+
+        btnExportJpg.addEventListener('click', () => {
+             // Basic Validation
+            if (ransomContent.innerText.includes('Waiting for input')) return;
+
+            // Visual Feedback
+            const originalText = btnExportJpg.innerHTML;
+            btnExportJpg.innerText = 'Capturing...';
+            btnExportJpg.disabled = true;
+
+            // Filename Logic
+            let filename = filenameInput.value.trim();
+            if (!filename) {
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                filename = `ransom-note-${timestamp}`;
+            }
+            if (!filename.toLowerCase().endsWith('.jpg')) {
+                filename += '.jpg';
+            }
+
+            // Capture
+            html2canvas(ransomOutput, {
+                scale: 3, // High Res
+                useCORS: true, // For fonts loaded from Google
+                backgroundColor: null, // Transparent if needed, but our div has bg
+            }).then(canvas => {
+                // Convert to blob/url
+                const image = canvas.toDataURL("image/jpeg", 0.9);
+
+                // Trigger Download
+                const link = document.createElement('a');
+                link.href = image;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                // Reset Button
+                btnExportJpg.innerHTML = originalText;
+                btnExportJpg.disabled = false;
+            }).catch(err => {
+                console.error('Export failed:', err);
+                btnExportJpg.innerText = 'Error!';
+                setTimeout(() => {
+                    btnExportJpg.innerHTML = originalText;
+                    btnExportJpg.disabled = false;
+                }, 2000);
+            });
+        });
+
+        // --- 3. Copy HTML Feature ---
+        btnCopyHtml.addEventListener('click', () => {
+            if (userInput.value.length === 0) return;
+
+            // 1. Identify used fonts
+            const usedFonts = new Set();
+            const spans = ransomContent.getElementsByTagName('span');
+            for (let span of spans) {
+                if (span.dataset.font) {
+                    usedFonts.add(span.dataset.font);
+                }
+            }
+
+            // 2. Build Font Link
+            let fontLinkTag = '';
+            if (usedFonts.size > 0) {
+                const families = Array.from(usedFonts).map(f => f.replace(/ /g, '+')).join('|');
+                fontLinkTag = `<link href="https://fonts.googleapis.com/css?family=${families}&display=swap" rel="stylesheet">`;
+            }
+
+            // 3. Construct HTML String
+            // We strip the classes and keep styles for portability, or we can keep classes if the user has tailwind.
+            // Requirement says "with all inline styles preserved".
+            // The spans already have inline styles. The container 'ransom-output' has classes.
+            // I will create a clean wrapper.
+            const rawContent = ransomContent.innerHTML;
+
+            const clipboardHTML = `
+<!-- The Ransom Note -->
+${fontLinkTag}
+<div style="
+    background-color: #d4a373;
+    background-image: url('data:image/svg+xml,%3Csvg width=\\'40\\' height=\\'40\\' viewBox=\\'0 0 40 40\\' xmlns=\\'http://www.w3.org/2000/svg\\' %3E%3Cg fill=\\'%23faedcd\\' fill-opacity=\\'0.4\\' fill-rule=\\'evenodd\\' %3E%3Cpath d=\\'M0 38.59l2.83-2.83 1.41 1.41L1.41 40H0v-1.41zM0 1.4l2.83 2.83 1.41-1.41L1.41 0H0v1.41zM38.59 40l-2.83-2.83 1.41-1.41L40 38.59V40h-1.41zM40 1.41l-2.83 2.83-1.41-1.41L38.59 0H40v1.41zM20 18.6l2.83-2.83 1.41 1.41L21.41 20l2.83 2.83-1.41 1.41L20 21.41l-2.83 2.83-1.41-1.41L18.59 20l-2.83-2.83 1.41-1.41L20 18.59z\\'/%3E%3C/g%3E%3C/svg%3E');
+    padding: 2rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.5rem;
+    line-height: 1.6;
+    font-family: monospace;
+">
+${rawContent}
+</div>
+`;
+            navigator.clipboard.writeText(clipboardHTML).then(() => {
+                const originalText = btnCopyHtml.innerHTML;
+                btnCopyHtml.innerHTML = `<span class="text-green-400">Copied!</span>`;
+                setTimeout(() => btnCopyHtml.innerHTML = originalText, 2000);
+            });
+        });
+
+        function getRandomInt(min, max) {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        function getRandomFloat(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        function renderText(text) {
+            ransomContent.innerHTML = ''; // Clear previous
+
+            if (!text) {
+                ransomContent.innerHTML = '<span class="font-mono text-gray-800 opacity-50 text-sm">Waiting for input...</span>';
+                return;
+            }
+
+            const chars = text.split('');
+
+            chars.forEach(char => {
+                if (char === ' ') {
+                    // Handle spaces
+                    const span = document.createElement('span');
+                    span.innerHTML = '&nbsp;';
+                    span.style.display = 'inline-block';
+                    span.style.width = '1rem';
+                    ransomContent.appendChild(span);
+                    return;
+                }
+
+                if (char === '\n') {
+                    // Handle newlines
+                    const br = document.createElement('br');
+                    br.style.width = '100%';
+                    br.style.display = 'block';
+                    // Note: flex-wrap handles flow, but break requires force.
+                    // Actually, with flex-wrap, a width:100% div forces a break.
+                    const breakDiv = document.createElement('div');
+                    breakDiv.style.width = '100%';
+                    ransomContent.appendChild(breakDiv);
+                    return;
+                }
+
+                const span = document.createElement('span');
+                span.innerText = char;
+                span.className = 'inline-block shadow-sm select-none transition-transform hover:scale-110';
+
+                // --- Random Styles ---
+
+                // 1. Font Family
+                const font = fontPool[getRandomInt(0, fontPool.length - 1)];
+                span.style.fontFamily = `'${font}', monospace`;
+                span.dataset.font = font; // Store for export
+
+                // 2. Font Size (1.2rem - 2.5rem)
+                const size = getRandomFloat(1.2, 2.5);
+                span.style.fontSize = `${size}rem`;
+
+                // 3. Rotation (-15deg to +15deg)
+                const rot = getRandomInt(-15, 15);
+                span.style.transform = `rotate(${rot}deg)`;
+
+                // 4. Vertical Align (offset)
+                const yOffset = getRandomInt(-5, 5);
+                span.style.transform += ` translateY(${yOffset}px)`;
+
+                // 5. Background & Color
+                // 20% White/Cream, 5% Black, 75% Transparent
+                const bgRoll = Math.random();
+                let bg, color, padding;
+
+                if (bgRoll < 0.05) {
+                    // Black inverted
+                    bg = '#111';
+                    color = '#eee';
+                    padding = getRandomInt(1, 4);
+                } else if (bgRoll < 0.25) { // 0.05 + 0.20
+                    // White/Cream
+                    const creams = ['#fdfbf7', '#fff', '#f0f0f0', '#fffff0'];
+                    bg = creams[getRandomInt(0, creams.length - 1)];
+                    color = Math.random() > 0.5 ? '#111' : '#8b0000'; // Black or Dark Red
+                    padding = getRandomInt(1, 4);
+                } else {
+                    // Transparent
+                    bg = 'transparent';
+                    color = Math.random() > 0.5 ? '#111' : '#8b0000';
+                    padding = 0;
+                }
+
+                span.style.backgroundColor = bg;
+                span.style.color = color;
+                span.style.padding = `${padding}px`;
+
+                // Extra: Border Radius for paper cut look (sometimes sharp, sometimes rough)
+                if (bg !== 'transparent') {
+                    span.style.borderRadius = `${getRandomInt(0, 2)}px`;
+                }
+
+                ransomContent.appendChild(span);
+            });
+        }
+
+    </script>
+</body>
+</html>
